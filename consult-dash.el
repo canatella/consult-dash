@@ -34,6 +34,8 @@
 (require 'consult)
 (require 'dash-docs)
 
+(defvar consult-dash-history-input nil "Input history used by `consult--read'.")
+
 (defun consult-dash--search-generator ()
   "Generate an async search closure."
   (thread-first (consult--async-sink)
@@ -53,6 +55,7 @@
       (_ (funcall next action)))))
 
 
+;;;###autoload
 (defun consult-dash (&optional initial)
   "Query dash docsets.
 INITIAL will be used as the initial input, if given."
@@ -64,6 +67,12 @@ INITIAL will be used as the initial input, if given."
          (result (consult--read sink :prompt "Documentation for: " :initial initial)))
     (when result
       (dash-docs-browse-url (cdr (assoc result (funcall sink nil)))))))
+
+;;;###autoload
+(defun consult-dash-at-point ()
+  "Bring up a `consult-dash' search interface with symbol at point."
+  (interactive)
+  (consult-dash (substring-no-properties (or (thing-at-point 'symbol) ""))))
 
 (provide 'consult-dash)
 ;;; consult-dash.el ends here
