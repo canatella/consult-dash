@@ -36,9 +36,12 @@
 
 (defvar consult-dash-history-input nil "Input history used by `consult--read'.")
 
+(defvar consult-dash-sink nil "The current consult sink.")
+
 (defun consult-dash--search-generator ()
   "Generate an async search closure."
-  (thread-first (consult--async-sink)
+  (thread-first
+      (consult--async-sink)
     (consult--async-refresh-immediate)
     (consult-dash--async-search (current-buffer))
     (consult--async-throttle)))
@@ -48,12 +51,14 @@
   (lambda (action)
     (pcase action
       ((pred stringp)
-       (when-let (candidates (with-current-buffer buffer
-                          (dash-docs-search action)))
+       (when-let (candidates (with-current-buffer buffer (dash-docs-search action)))
          (funcall next 'flush)
          (funcall next candidates)))
       (_ (funcall next action)))))
 
+(defun consult-dash-candidates ()
+  "Return the current candidates."
+  (when consult-dash-sink (funcall consult-dash-sink nil)))
 
 ;;;###autoload
 (defun consult-dash (&optional initial)
@@ -63,16 +68,31 @@ INITIAL will be used as the initial input, if given."
   (dash-docs-initialize-debugging-buffer)
   (dash-docs-create-buffer-connections)
   (dash-docs-create-common-connections)
-  (let* ((sink (consult-dash--search-generator))
-         (result (consult--read sink :prompt "Documentation for: " :initial initial)))
+  (setq consult-dash-sink (consult-dash--search-generator))
+  (let* ((dash-docs-candidate-format (if (featurep 'marginalia) "%n" dash-docs-candidate-format))
+         (result
+          (consult--read consult-dash-sink :prompt "Documentation for: " :initial initial :history 'consult-dash-history-input :category 'dash-docs-item)))
     (when result
-      (dash-docs-browse-url (cdr (assoc result (funcall sink nil)))))))
+      (dash-docs-browse-url (cdr (assoc result (consult-dash-candidates)))))))
 
 ;;;###autoload
 (defun consult-dash-at-point ()
   "Bring up a `consult-dash' search interface with symbol at point."
   (interactive)
   (consult-dash (substring-no-properties (or (thing-at-point 'symbol) ""))))
+
+(with-eval-after-load "marginalia"
+  (defun consult-dash--annotate (candidate)
+    "Compute marginalia fields for CANDIDATE."
+    (when-let ((metadata (assoc candidate (consult-dash-candidates))))
+      (pcase-let ((`(,title ,docset
+                            (,type ,name ,url))
+                   metadata))
+        (marginalia--fields
+         (type :face 'marginalia-type :width 10)
+         (docset :face 'marginalia-file-name)))))
+
+  (add-to-list 'marginalia-annotator-registry '(dash-docs-item consult-dash--annotate)))
 
 (provide 'consult-dash)
 ;;; consult-dash.el ends here
